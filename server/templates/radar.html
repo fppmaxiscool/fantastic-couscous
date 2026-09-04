@@ -708,44 +708,18 @@ function tick(msg) {
     document.getElementById('ticker').innerHTML = tickLines.map(l => `<div class="tick-line">${l}</div>`).join('');
 }
 
-// ── DEMO DATA ─────────────────────────────────────────────────
-function generateDemoData() {
-    demoMode = true;
-    document.getElementById('demo-badge').style.display = 'block';
-    tick('NO SCANNER — DEMO MODE ACTIVE');
-
-    const ssids = ['HomeNetwork_5G','NETGEAR42','AndroidAP','[HIDDEN]','Starbucks_WiFi','ATT-Router','xfinitywifi','DIRECT-TV8','TP-LINK_3F4A','Google_Fiber'];
-    const caps  = ['[WPA2-PSK]','[WPA3]','[WPA-PSK][WPA2-PSK]','[WEP]','[ESS]','[WPA2-PSK]','[ESS]','[WPA2]','[WPA-PSK]','[WPA3]'];
-
-    for (let i = 0; i < 12; i++) {
-        const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
-        const dist  = 0.2 + Math.random() * 0.75;
-        const level = -40 - Math.round(dist * 60);
-        const cap   = caps[i % caps.length];
-        const isOpen = cap.includes('ESS') && !cap.includes('WPA');
-        const isHid  = ssids[i] === '[HIDDEN]';
-        const risk   = (isOpen ? 30 : 0) + (isHid ? 20 : 0) + (level < -80 ? 10 : 0);
-
-        const bssid = Array.from({length:6}, () => Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join(':');
-
-        networks.set(bssid, {
-            bssid,
-            ssid: isHid ? '' : ssids[i % ssids.length],
-            level,
-            distance: dist * 200,
-            risk_score: Math.min(100, risk + Math.floor(Math.random()*15)),
-            is_open: isOpen,
-            is_hidden: isHid,
-            capabilities: cap,
-            frequency: Math.random() > 0.4 ? 2412 + Math.floor(Math.random()*5)*5 : 5180,
-            scan_count: Math.floor(Math.random()*20)+1,
-            position: { x: Math.cos(angle)*dist, y: Math.sin(angle)*dist },
-            _phase: Math.random() * Math.PI * 2,
-        });
-    }
-    renderNetworkList();
-    updateStats();
-    tick('DEMO: ' + networks.size + ' SIMULATED TARGETS LOADED');
+// ── WAITING STATE ──────────────────────────────────────────────
+function showWaiting() {
+    document.getElementById('net-list').innerHTML = `
+        <div style="padding:24px 16px; text-align:center; color:rgba(0,255,65,0.35); font-size:11px; letter-spacing:2px; line-height:2">
+            <div style="font-size:28px; margin-bottom:12px">📡</div>
+            <div>AWAITING SCAN DATA</div>
+            <div style="margin-top:8px; font-size:9px; color:rgba(0,255,65,0.25)">
+                Make sure Termux:API is installed<br>
+                and Location permission is granted
+            </div>
+        </div>`;
+    document.getElementById('net-count').textContent = '0 TARGETS';
 }
 
 // ── LIVE DATA FETCH ───────────────────────────────────────────
@@ -755,14 +729,16 @@ async function fetchSignals() {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const d = await r.json();
         if (d.signals && d.signals.length > 0) {
-            if (demoMode) { networks.clear(); demoMode = false; document.getElementById('demo-badge').style.display='none'; }
+            networks.clear();
             processSignals(d.signals);
-            tick('REFRESH: ' + d.signals.length + ' SIGNALS');
-        } else if (!demoMode) {
-            generateDemoData();
+            tick('REFRESH: ' + d.signals.length + ' REAL SIGNALS');
+        } else {
+            if (networks.size === 0) showWaiting();
+            tick('NO SIGNALS YET — SCANNER STARTING...');
         }
     } catch(e) {
-        if (!demoMode) generateDemoData();
+        if (networks.size === 0) showWaiting();
+        tick('SERVER UNREACHABLE');
     }
 }
 
