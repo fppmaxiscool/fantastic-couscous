@@ -403,6 +403,10 @@
             <div class="stat-val red" id="s-risk">0</div>
             <div class="stat-lbl">HIGH RISK</div>
         </div>
+        <div class="stat-cell">
+            <div class="stat-val" id="s-cam" style="color:#ff6ef7;text-shadow:0 0 8px #ff6ef7">0</div>
+            <div class="stat-lbl">CAMERAS</div>
+        </div>
     </div>
 
     <!-- MAIN -->
@@ -416,7 +420,10 @@
         <!-- NETWORK LIST -->
         <div id="net-drawer">
             <div id="net-drawer-header">
-                <span>◈ DETECTED NETWORKS</span>
+                <div style="display:flex;gap:12px">
+                    <span id="tab-all" onclick="setTab('all')" style="cursor:pointer;color:var(--green)">◈ ALL</span>
+                    <span id="tab-cam" onclick="setTab('cameras')" style="cursor:pointer;color:rgba(0,255,65,0.4)">📷 CAMERAS</span>
+                </div>
                 <span id="net-count">0 TARGETS</span>
             </div>
             <div id="net-list"></div>
@@ -426,6 +433,7 @@
     <!-- ACTION BAR -->
     <div id="action-bar">
         <button class="btn" id="btn-scan" onclick="toggleScan()">⬡ SCAN</button>
+        <button class="btn" id="btn-cameras" onclick="setTab('cameras')" style="border-color:rgba(255,110,247,0.4);color:#ff6ef7">📷 CAM</button>
         <button class="btn" id="btn-export" onclick="exportData()">⬇ EXPORT</button>
         <button class="btn danger" id="btn-clear" onclick="clearData()">✕ CLEAR</button>
     </div>
@@ -455,6 +463,24 @@ let   scanning = false;
 let   demoMode = false;
 let   tickLines = [];
 let   selectedBSSID = null;
+let   currentTab = 'all';
+
+// ── TAB SWITCHING ────────────────────────────────────────────
+function setTab(tab) {
+    currentTab = tab;
+    const tabAll = document.getElementById('tab-all');
+    const tabCam = document.getElementById('tab-cam');
+    if (tab === 'cameras') {
+        tabAll.style.color = 'rgba(0,255,65,0.4)';
+        tabCam.style.color = '#ff6ef7';
+        tabCam.style.textShadow = '0 0 8px #ff6ef7';
+    } else {
+        tabAll.style.color = 'var(--green)';
+        tabCam.style.color = 'rgba(0,255,65,0.4)';
+        tabCam.style.textShadow = 'none';
+    }
+    renderNetworkList();
+}
 
 // ── LOADING BOOT SEQUENCE ───────────────────────────────────
 const loadBar = document.getElementById('loading-bar');
@@ -588,20 +614,29 @@ function drawRadar() {
         const x = cx + net.position.x * R * 0.88;
         const y = cy + net.position.y * R * 0.88;
 
+        // cameras are purple, others colour-coded by risk
         let color = '#00ff41';
-        if (net.risk_score > 70) color = '#ff2244';
+        if (net.is_camera)            color = '#ff6ef7';
+        else if (net.risk_score > 70) color = '#ff2244';
         else if (net.risk_score > 30) color = '#ffcc00';
 
-        const r = net.bssid === selectedBSSID ? 9 : 6;
+        const r = net.bssid === selectedBSSID ? 9 : (net.is_camera ? 7 : 6);
         const glow = 6 + 4 * Math.sin(Date.now()/600 + net._phase);
 
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI*2);
         ctx.fillStyle = color;
         ctx.shadowColor = color;
-        ctx.shadowBlur = glow;
+        ctx.shadowBlur = net.is_camera ? glow * 1.6 : glow;
         ctx.fill();
         ctx.shadowBlur = 0;
+
+        // camera: draw a square overlay to distinguish from normal blips
+        if (net.is_camera) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x - r - 2, y - r - 2, (r + 2) * 2, (r + 2) * 2);
+        }
 
         // ring around selected
         if (net.bssid === selectedBSSID) {
@@ -614,9 +649,10 @@ function drawRadar() {
 
         // label
         if (networks.size < 20) {
-            ctx.fillStyle = 'rgba(0,255,65,0.7)';
-            ctx.font = '9px Share Tech Mono';
-            ctx.fillText(net.ssid || '???', x + 10, y + 3);
+            ctx.fillStyle = net.is_camera ? 'rgba(255,110,247,0.85)' : 'rgba(0,255,65,0.7)';
+            ctx.font = net.is_camera ? 'bold 9px Share Tech Mono' : '9px Share Tech Mono';
+            const label = net.is_camera ? `📷 ${net.camera_brand||net.ssid||'???'}` : (net.ssid || '???');
+            ctx.fillText(label, x + 10, y + 3);
         }
     });
 
@@ -639,16 +675,33 @@ function processSignals(signals) {
 // ── NETWORK LIST ────────────────────────────────────────────
 function renderNetworkList() {
     const list = document.getElementById('net-list');
-    const sorted = [...networks.values()].sort((a,b) => b.risk_score - a.risk_score);
-    document.getElementById('net-count').textContent = sorted.length + ' TARGETS';
+    let items = [...networks.values()].sort((a,b) => b.risk_score - a.risk_score);
 
-    list.innerHTML = sorted.map(n => {
+    if (currentTab === 'cameras') {
+        items = items.filter(n => n.is_camera);
+        document.getElementById('net-count').textContent = items.length + ' CAMERAS';
+    } else {
+        document.getElementById('net-count').textContent = items.length + ' TARGETS';
+    }
+
+    if (items.length === 0) {
+        list.innerHTML = `<div style="padding:24px;text-align:center;color:rgba(0,255,65,0.3);font-size:11px;letter-spacing:2px">
+            ${ currentTab === 'cameras' ? '📷<br><br>NO CAMERAS DETECTED<br><span style="font-size:9px;color:rgba(0,255,65,0.2)">Cameras identified by MAC address prefix</span>' : '📡<br><br>AWAITING SCAN DATA'}
+        </div>`;
+        return;
+    }
+
+    list.innerHTML = items.map(n => {
         const risk = n.risk_score > 70 ? 'high' : n.risk_score > 30 ? 'medium' : 'low';
         const riskLabel = n.risk_score > 70 ? 'HIGH' : n.risk_score > 30 ? 'MED' : 'LOW';
         const sel = n.bssid === selectedBSSID ? 'style="background:rgba(0,255,65,0.08)"' : '';
+        const camBadge = n.is_camera ? `<span style="color:#ff6ef7;font-size:9px;letter-spacing:1px">📷 ${n.camera_brand} · ${n.camera_type}</span><br>` : '';
+        const dotStyle = n.is_camera ? 'background:#ff6ef7;box-shadow:0 0 8px #ff6ef7' : '';
+        const dotClass = n.is_camera ? '' : risk;
         return `<div class="net-row" ${sel} onclick="showDetail('${n.bssid}')">
-            <div class="net-dot ${risk}"></div>
+            <div class="net-dot ${dotClass}" style="${dotStyle}"></div>
             <div class="net-name">
+                ${camBadge}
                 <span class="ssid">${n.ssid || '[ HIDDEN ]'}</span>
                 <span class="bssid">${n.bssid}</span>
             </div>
@@ -667,6 +720,7 @@ function updateStats() {
     document.getElementById('s-active').textContent = arr.filter(n => n.active !== false).length;
     document.getElementById('s-open').textContent   = arr.filter(n => n.is_open).length;
     document.getElementById('s-risk').textContent   = arr.filter(n => n.risk_score > 70).length;
+    document.getElementById('s-cam').textContent    = arr.filter(n => n.is_camera).length;
 }
 
 // ── DETAIL MODAL ─────────────────────────────────────────────
