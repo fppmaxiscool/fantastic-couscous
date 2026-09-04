@@ -68,10 +68,11 @@ install_packages() {
     info "Installing required packages..."
     
     # Core packages
-    pkg install -y python python-pip sqlite git curl wget jq
+    pkg install -y python python-pip sqlite git curl wget jq qrencode
     
     # Python heavy dependencies (avoids long compilation times)
     pkg install -y tur-repo
+    pkg update -y
     pkg install -y python-numpy python-pandas
     
     # Termux:API for Wi-Fi scanning
@@ -88,6 +89,11 @@ install_python_deps() {
     info "Installing Python dependencies..."
     
     export PIP_BREAK_SYSTEM_PACKAGES=1
+    
+    # Need to be in radar dir to find requirements.txt
+    if [[ -d "$RADAR_DIR" ]]; then
+        cd "$RADAR_DIR"
+    fi
     
     # Install from requirements.txt if available
     if [[ -f "requirements.txt" ]]; then
@@ -361,14 +367,14 @@ main() {
     log "${BLUE}[20%] Downloading core system packages (this may take a few minutes)...${NC}"
     install_packages
     
-    log "${BLUE}[40%] Setting up Python dependencies...${NC}"
+    log "${BLUE}[40%] Downloading CIVOPS-Radar code...${NC}"
+    clone_repository
+    
+    log "${BLUE}[50%] Setting up Python dependencies...${NC}"
     install_python_deps
     
-    log "${BLUE}[50%] Setting up permissions...${NC}"
+    log "${BLUE}[60%] Setting up permissions...${NC}"
     setup_permissions
-    
-    log "${BLUE}[60%] Downloading CIVOPS-Radar code...${NC}"
-    clone_repository
     
     log "${BLUE}[70%] Setting up directories...${NC}"
     setup_directories
