@@ -68,7 +68,11 @@ install_packages() {
     info "Installing required packages..."
     
     # Core packages
-    pkg install -y python python-pip sqlite git curl wget jq python-numpy python-pandas
+    pkg install -y python python-pip sqlite git curl wget jq
+    
+    # Python heavy dependencies (avoids long compilation times)
+    pkg install -y tur-repo
+    pkg install -y python-numpy python-pandas
     
     # Termux:API for Wi-Fi scanning
     pkg install -y termux-api
