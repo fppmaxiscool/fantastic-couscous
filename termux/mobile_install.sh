@@ -68,7 +68,7 @@ install_packages() {
     info "Installing required packages..."
     
     # Core packages
-    pkg install -y python python-pip sqlite git curl wget jq qrencode
+    pkg install -y python python-pip sqlite git curl wget jq
     
     # Termux:API for Wi-Fi scanning
     pkg install -y termux-api
