@@ -70,11 +70,6 @@ install_packages() {
     # Core packages
     pkg install -y python python-pip sqlite git curl wget jq qrencode
     
-    # Python heavy dependencies (avoids long compilation times)
-    pkg install -y tur-repo
-    pkg update -y
-    pkg install -y python-numpy python-pandas
-    
     # Termux:API for Wi-Fi scanning
     pkg install -y termux-api
     
@@ -90,19 +85,12 @@ install_python_deps() {
     
     export PIP_BREAK_SYSTEM_PACKAGES=1
     
-    # Need to be in radar dir to find requirements.txt
-    if [[ -d "$RADAR_DIR" ]]; then
-        cd "$RADAR_DIR"
-    fi
+    cd "$RADAR_DIR"
     
     # Install from requirements.txt if available
     if [[ -f "requirements.txt" ]]; then
-        # Remove pandas and numpy from requirements so they aren't built from source
-        sed -i '/pandas/d' requirements.txt
-        sed -i '/numpy/d' requirements.txt
         pip install -r requirements.txt
     else
-        # Install core dependencies (excluding pandas and numpy as they are installed via pkg)
         pip install flask flask-cors requests beautifulsoup4
     fi
     
