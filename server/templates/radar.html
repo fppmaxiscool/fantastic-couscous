@@ -379,9 +379,14 @@
     <!-- HEADER -->
     <div id="header">
         <div id="header-title">CIVOPS<span>//</span>RADAR</div>
-        <div id="status-pill">
-            <div id="status-dot"></div>
-            <span id="status-text">LIVE</span>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <div id="cam-alert" style="display:none; color:#ff6ef7; border:1px solid #ff6ef7; background:rgba(255,110,247,0.1); padding:2px 8px; border-radius:4px; font-size:9px; letter-spacing:1px; animation: pulse 2s infinite;">
+                <span id="cam-alert-count">0</span> CAMERAS DETECTED
+            </div>
+            <div id="status-pill">
+                <div id="status-dot"></div>
+                <span id="status-text">LIVE</span>
+            </div>
         </div>
     </div>
 
@@ -611,8 +616,13 @@ function drawRadar() {
 
     // network blips
     networks.forEach(net => {
-        const x = cx + net.position.x * R * 0.88;
-        const y = cy + net.position.y * R * 0.88;
+        // lerp position for smooth movement
+        if (!net._current_r) net._current_r = net.position.radius;
+        net._current_r += (net.position.radius - net._current_r) * 0.1; // Smooth movement
+        
+        const r_display = net._current_r * R * 0.88;
+        const x = cx + r_display * Math.cos(net.position.angle * Math.PI / 180);
+        const y = cy + r_display * Math.sin(net.position.angle * Math.PI / 180);
 
         // cameras are purple, others colour-coded by risk
         let color = '#00ff41';
@@ -716,11 +726,21 @@ function renderNetworkList() {
 // ── STATS ────────────────────────────────────────────────────
 function updateStats() {
     const arr = [...networks.values()];
+    const camCount = arr.filter(n => n.is_camera).length;
+    
     document.getElementById('s-total').textContent  = arr.length;
     document.getElementById('s-active').textContent = arr.filter(n => n.active !== false).length;
     document.getElementById('s-open').textContent   = arr.filter(n => n.is_open).length;
     document.getElementById('s-risk').textContent   = arr.filter(n => n.risk_score > 70).length;
-    document.getElementById('s-cam').textContent    = arr.filter(n => n.is_camera).length;
+    document.getElementById('s-cam').textContent    = camCount;
+    
+    const camAlert = document.getElementById('cam-alert');
+    if (camCount > 0) {
+        camAlert.style.display = 'block';
+        document.getElementById('cam-alert-count').textContent = camCount;
+    } else {
+        camAlert.style.display = 'none';
+    }
 }
 
 // ── DETAIL MODAL ─────────────────────────────────────────────
