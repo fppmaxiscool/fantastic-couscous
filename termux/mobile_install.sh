@@ -4,14 +4,12 @@
 # License: MIT
 #
 # This script installs CIVOPS-Radar on Android devices via Termux
-# Optimized for mobile deployment and GitHub access
 
-set -euo pipefail
+# NOTE: Do NOT use set -euo pipefail here — optional steps would kill the whole install
 
 # Configuration
-RADAR_DIR="/data/data/com.termux/files/home/radar"
+RADAR_DIR="$HOME/radar"
 GITHUB_REPO="https://github.com/fppmaxiscool/fantastic-couscous.git"
-PYTHON_VERSION="3.11"
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,367 +17,177 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Logging function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-}
+log()     { echo -e "[$(date '+%H:%M:%S')] $1"; }
+success() { log "${GREEN}✓ $1${NC}"; }
+warning() { log "${YELLOW}⚠ $1${NC}"; }
+info()    { log "${BLUE}ℹ $1${NC}"; }
+error()   { log "${RED}✗ $1${NC}"; }
+progress(){ log "${PURPLE}$1${NC}"; }
 
-# Error handling
-error_exit() {
-    log "${RED}ERROR: $1${NC}"
-    exit 1
-}
+# ─── Step 1: Update packages ────────────────────────────────────────────────
+progress "[10%] Updating Termux package list..."
+pkg update -y 2>/dev/null || warning "pkg update had warnings (continuing)"
+success "Package list updated"
 
-# Success message
-success() {
-    log "${GREEN}✓ $1${NC}"
-}
+# ─── Step 2: Install system packages ────────────────────────────────────────
+progress "[20%] Installing required system packages..."
 
-# Warning message
-warning() {
-    log "${YELLOW}⚠ $1${NC}"
-}
+PACKAGES="python python-pip sqlite git curl wget"
+for pkg_name in $PACKAGES; do
+    info "Installing $pkg_name..."
+    pkg install -y "$pkg_name" 2>/dev/null || warning "Could not install $pkg_name (continuing)"
+done
 
-# Info message
-info() {
-    log "${BLUE}ℹ $1${NC}"
-}
+# termux-api is optional (required for Wi-Fi scanning but not for web interface)
+info "Installing termux-api (optional, needed for Wi-Fi scanning)..."
+pkg install -y termux-api 2>/dev/null || warning "termux-api not installed — Wi-Fi scanning won't work but web UI will"
 
-# Check if running in Termux
-check_termux() {
-    if [[ ! -d "/data/data/com.termux" ]]; then
-        error_exit "This installer must be run in Termux environment"
-    fi
-    success "Termux environment detected"
-}
+success "System packages done"
 
-# Update Termux packages
-update_termux() {
-    info "Updating Termux packages..."
-    pkg update -y
-    pkg upgrade -y
-    success "Termux packages updated"
-}
+# ─── Step 3: Clone repository ───────────────────────────────────────────────
+progress "[40%] Downloading CIVOPS-Radar code from GitHub..."
 
-# Install required packages
-install_packages() {
-    info "Installing required packages..."
-    
-    # Core packages
-    pkg install -y python python-pip sqlite git curl wget jq
-    
-    # Termux:API for Wi-Fi scanning
-    pkg install -y termux-api
-    
-    # Additional utilities
-    pkg install -y nano vim
-    
-    success "Required packages installed"
-}
-
-# Install Python dependencies
-install_python_deps() {
-    info "Installing Python dependencies..."
-    
-    export PIP_BREAK_SYSTEM_PACKAGES=1
-    
-    cd "$RADAR_DIR"
-    
-    # Install from requirements.txt if available
-    if [[ -f "requirements.txt" ]]; then
-        pip install -r requirements.txt
-    else
-        pip install flask flask-cors requests beautifulsoup4
-    fi
-    
-    success "Python dependencies installed"
-}
-
-# Setup Termux:API permissions
-setup_permissions() {
-    info "Setting up Termux:API permissions..."
-    
-    # Grant location permission (required for Wi-Fi scanning)
-    termux-setup-storage
-    
-    warning "Please grant the following permissions in Android Settings:"
-    warning "  - Location (for Wi-Fi scanning)"
-    warning "  - Storage (for data export)"
-    warning "  - Camera (for QR code scanning)"
-    
-    success "Permission setup initiated"
-}
-
-# Clone from GitHub
-clone_repository() {
-    info "Cloning CIVOPS-Radar from GitHub..."
-    
-    # Remove existing directory if it exists
-    if [[ -d "$RADAR_DIR" ]]; then
+if [ -d "$RADAR_DIR" ]; then
+    info "Found existing installation at $RADAR_DIR — updating..."
+    cd "$RADAR_DIR" && git pull origin main 2>/dev/null || {
+        warning "Git pull failed — doing fresh install"
+        cd "$HOME"
         rm -rf "$RADAR_DIR"
-    fi
-    
-    # Clone repository
-    git clone "$GITHUB_REPO" "$RADAR_DIR"
-    
-    success "Repository cloned successfully"
-}
+        git clone "$GITHUB_REPO" "$RADAR_DIR" || { error "Failed to clone repository. Check internet connection."; exit 1; }
+    }
+else
+    git clone "$GITHUB_REPO" "$RADAR_DIR" || { error "Failed to clone repository. Check internet connection."; exit 1; }
+fi
 
-# Setup radar directory structure
-setup_directories() {
-    info "Setting up radar directories..."
-    
-    cd "$RADAR_DIR"
-    mkdir -p data/{exports,samples}
-    mkdir -p server/{templates,static}
-    mkdir -p docs
-    
-    success "Directory structure created"
-}
+success "Code downloaded"
 
-# Initialize database
-init_database() {
-    info "Initializing SQLite database..."
-    
-    cd "$RADAR_DIR"
-    
-    # Run the scanner script in init mode
-    chmod +x termux/radar_prototype.sh
-    ./termux/radar_prototype.sh init
-    
-    success "Database initialized"
-}
+# ─── Step 4: Install Python packages ────────────────────────────────────────
+progress "[60%] Installing Python packages..."
 
-# Create mobile startup scripts
-create_mobile_scripts() {
-    info "Creating mobile startup scripts..."
-    
-    cd "$RADAR_DIR"
-    
-    # Create mobile start script
-    cat > start_mobile.sh << 'EOF'
+cd "$RADAR_DIR"
+export PIP_BREAK_SYSTEM_PACKAGES=1
+
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt 2>/dev/null || {
+        warning "requirements.txt install failed — trying individual packages"
+        pip install flask flask-cors requests beautifulsoup4 2>/dev/null || \
+            warning "Some Python packages failed to install"
+    }
+else
+    pip install flask flask-cors requests beautifulsoup4 2>/dev/null || \
+        warning "Some Python packages failed to install"
+fi
+
+success "Python packages done"
+
+# ─── Step 5: Set up directories and database ────────────────────────────────
+progress "[75%] Setting up directories and database..."
+
+cd "$RADAR_DIR"
+mkdir -p data/exports data/samples server/templates server/static
+
+# Initialize database directly with sqlite3 (no dependency on radar_prototype.sh)
+sqlite3 data/scans.db "
+CREATE TABLE IF NOT EXISTS scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    bssid TEXT NOT NULL,
+    ssid TEXT,
+    capabilities TEXT,
+    frequency INTEGER,
+    level INTEGER,
+    distance REAL,
+    risk_score INTEGER DEFAULT 0,
+    is_hidden BOOLEAN DEFAULT 0,
+    is_open BOOLEAN DEFAULT 0,
+    vendor TEXT,
+    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    scan_count INTEGER DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_bssid ON scans(bssid);
+CREATE INDEX IF NOT EXISTS idx_timestamp ON scans(timestamp);
+" 2>/dev/null && success "Database ready" || warning "Database setup had issues (will be created on first run)"
+
+success "Directories ready"
+
+# ─── Step 6: Create startup scripts ─────────────────────────────────────────
+progress "[90%] Creating startup shortcuts..."
+
+cd "$RADAR_DIR"
+
+cat > start_mobile.sh << 'STARTEOF'
 #!/bin/bash
-# CIVOPS-Radar Mobile Startup Script
-
-cd /data/data/com.termux/files/home/radar
-
-echo "🛰️ Starting CIVOPS-Radar Mobile..."
-echo "📱 Web interface: http://localhost:5000"
-echo "📊 Demo interface: http://localhost:5000/demo"
+cd "$HOME/radar"
+echo ""
+echo "🛰️  Starting CIVOPS-Radar..."
+echo "📱 Open your browser to: http://localhost:5000"
+echo "📊 Demo mode:            http://localhost:5000/demo"
 echo "Press Ctrl+C to stop"
-
-# Start the web server
+echo ""
+export PIP_BREAK_SYSTEM_PACKAGES=1
 python server/app.py --host 0.0.0.0 --port 5000 &
 SERVER_PID=$!
-
-# Start the scanner
-./termux/radar_prototype.sh scan &
-SCANNER_PID=$!
-
-# Wait for user interrupt
-trap 'kill $SERVER_PID $SCANNER_PID; echo "🛑 CIVOPS-Radar stopped"; exit 0' INT
+# Start scanner only if termux-api is available
+if command -v termux-wifi-scaninfo &>/dev/null; then
+    ./termux/radar_prototype.sh scan &
+    SCANNER_PID=$!
+    trap 'kill $SERVER_PID $SCANNER_PID 2>/dev/null; echo "Stopped."; exit 0' INT
+else
+    echo "⚠  Wi-Fi scanner not available (termux-api not installed). Web UI only."
+    trap 'kill $SERVER_PID 2>/dev/null; echo "Stopped."; exit 0' INT
+fi
 wait
-EOF
+STARTEOF
+chmod +x start_mobile.sh
 
-    chmod +x start_mobile.sh
-    
-    # Create quick start script
-    cat > quick_start.sh << 'EOF'
+cat > quick_start.sh << 'QSEOF'
 #!/bin/bash
-# Quick start for mobile users
+cd "$HOME/radar"
+echo "🚀 CIVOPS-Radar Quick Start"
+echo "Open browser to: http://localhost:5000"
+echo "Press Ctrl+C to stop"
+export PIP_BREAK_SYSTEM_PACKAGES=1
+python server/app.py --host 0.0.0.0 --port 5000
+QSEOF
+chmod +x quick_start.sh
 
-cd /data/data/com.termux/files/home/radar
-
-echo "🚀 Quick Start CIVOPS-Radar"
-echo "1. Starting web server..."
-python server/app.py --host 0.0.0.0 --port 5000 &
-echo "2. Web interface ready at: http://localhost:5000"
-echo "3. Open browser and navigate to the URL above"
-echo "4. Press Ctrl+C to stop"
-wait
-EOF
-
-    chmod +x quick_start.sh
-    
-    # Create update script
-    cat > update_radar.sh << 'EOF'
+cat > update_radar.sh << 'UPDATEEOF'
 #!/bin/bash
-# Update CIVOPS-Radar from GitHub
-
-cd /data/data/com.termux/files/home/radar
-
+cd "$HOME/radar"
 echo "🔄 Updating CIVOPS-Radar..."
 git pull origin main
-
-echo "📦 Reinstalling dependencies..."
 export PIP_BREAK_SYSTEM_PACKAGES=1
-pip install -r requirements.txt
+pip install -r requirements.txt 2>/dev/null
+echo "✅ Done! Run ./start_mobile.sh to restart."
+UPDATEEOF
+chmod +x update_radar.sh
 
-echo "✅ Update complete!"
-echo "Run ./start_mobile.sh to restart"
-EOF
+success "Startup scripts created"
 
-    chmod +x update_radar.sh
-    
-    success "Mobile scripts created"
-}
+# ─── Request storage permissions (non-blocking) ─────────────────────────────
+progress "[95%] Requesting storage permissions (a dialog may appear)..."
+termux-setup-storage 2>/dev/null &
+sleep 1
 
-# Create mobile-friendly documentation
-create_mobile_docs() {
-    info "Creating mobile documentation..."
-    
-    cd "$RADAR_DIR"
-    
-    cat > MOBILE_README.md << 'EOF'
-# CIVOPS-Radar Mobile Installation
+# ─── Done ───────────────────────────────────────────────────────────────────
+progress "[100%] ✅ Installation complete!"
 
-## Quick Start
-
-1. **Install Termux** from F-Droid (not Google Play)
-2. **Run this installer**:
-   ```bash
-   curl -sSL https://raw.githubusercontent.com/your-username/CIVOPS-Radar/main/termux/mobile_install.sh | bash
-   ```
-3. **Start the radar**:
-   ```bash
-   cd ~/radar
-   ./start_mobile.sh
-   ```
-4. **Open browser** to: `http://localhost:5000`
-
-## Mobile Commands
-
-- `./start_mobile.sh` - Start full radar system
-- `./quick_start.sh` - Quick web interface only
-- `./update_radar.sh` - Update from GitHub
-- `./termux/radar_prototype.sh scan` - Scanner only
-
-## Mobile Features
-
-- 📱 **Mobile-optimized interface**
-- 🛰️ **Live radar visualization**
-- 📊 **Real-time statistics**
-- 📤 **Data export**
-- 🔒 **Offline operation**
-
-## Troubleshooting
-
-### No Networks Detected
-- Check location permissions
-- Ensure Wi-Fi is enabled
-- Try increasing scan interval
-
-### Web Interface Not Loading
-- Check if port 5000 is available
-- Restart with `./quick_start.sh`
-- Check firewall settings
-
-### Update Issues
-- Run `./update_radar.sh`
-- Check internet connection
-- Verify GitHub access
-
-## Support
-
-- 📖 Documentation: [GitHub](https://github.com/your-username/CIVOPS-Radar)
-- 🐛 Issues: [GitHub Issues](https://github.com/your-username/CIVOPS-Radar/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/your-username/CIVOPS-Radar/discussions)
-
----
-
-**Happy scanning! 🛰️**
-EOF
-
-    success "Mobile documentation created"
-}
-
-# Create QR code for easy access
-create_qr_code() {
-    info "Creating QR code for easy access..."
-    
-    cd "$RADAR_DIR"
-    
-    # Create a simple QR code generator (if qrencode is available)
-    if command -v qrencode &> /dev/null; then
-        echo "http://localhost:5000" | qrencode -o radar_qr.png
-        success "QR code created: radar_qr.png"
-    else
-        info "Install qrencode for QR code generation: pkg install qrencode"
-    fi
-}
-
-# Display mobile installation summary
-show_mobile_summary() {
-    log ""
-    log "${PURPLE}=== CIVOPS-Radar Mobile Installation Complete ===${NC}"
-    log ""
-    log "${GREEN}Mobile Installation Summary:${NC}"
-    log "  • Radar directory: $RADAR_DIR"
-    log "  • Web interface: http://localhost:5000"
-    log "  • Demo interface: http://localhost:5000/demo"
-    log ""
-    log "${GREEN}Mobile Commands:${NC}"
-    log "  cd $RADAR_DIR"
-    log "  ./start_mobile.sh          # Start full system"
-    log "  ./quick_start.sh           # Quick web interface"
-    log "  ./update_radar.sh          # Update from GitHub"
-    log ""
-    log "${GREEN}Mobile Access:${NC}"
-    log "  • Open browser to: http://localhost:5000"
-    log "  • Use demo interface for testing"
-    log "  • Export data for analysis"
-    log ""
-    log "${YELLOW}Mobile Notes:${NC}"
-    log "  • Grant location permission for scanning"
-    log "  • Use F-Droid version of Termux"
-    log "  • Keep device charged during scanning"
-    log ""
-    log "${GREEN}Ready for mobile scanning! 📱🛰️${NC}"
-}
-
-# Main mobile installation function
-main() {
-    log "${PURPLE}=== CIVOPS-Radar Mobile Installation ===${NC}"
-    log "Installing CIVOPS-Radar for mobile deployment..."
-    log ""
-    
-    # Pre-flight checks
-    check_termux
-    
-    # Installation steps
-    log "${BLUE}[10%] Starting installation...${NC}"
-    update_termux
-    
-    log "${BLUE}[20%] Downloading core system packages (this may take a few minutes)...${NC}"
-    install_packages
-    
-    log "${BLUE}[40%] Downloading CIVOPS-Radar code...${NC}"
-    clone_repository
-    
-    log "${BLUE}[50%] Setting up Python dependencies...${NC}"
-    install_python_deps
-    
-    log "${BLUE}[60%] Setting up permissions...${NC}"
-    setup_permissions
-    
-    log "${BLUE}[70%] Setting up directories...${NC}"
-    setup_directories
-    
-    log "${BLUE}[80%] Initializing database...${NC}"
-    init_database
-    
-    log "${BLUE}[90%] Creating mobile shortcuts...${NC}"
-    create_mobile_scripts
-    create_mobile_docs
-    create_qr_code
-    
-    log "${BLUE}[100%] Installation complete!${NC}"
-    
-    # Show summary
-    show_mobile_summary
-}
-
-# Run main function
-main "$@"
+echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║   CIVOPS-Radar installed successfully!   ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "  📁 Location:  $RADAR_DIR"
+echo -e "  🌐 URL:        http://localhost:5000"
+echo ""
+echo -e "  ${YELLOW}To start the radar:${NC}"
+echo -e "    cd ~/radar"
+echo -e "    ./start_mobile.sh"
+echo ""
+echo -e "  ${YELLOW}Or just the web UI (no scanner):${NC}"
+echo -e "    cd ~/radar"
+echo -e "    ./quick_start.sh"
+echo ""
