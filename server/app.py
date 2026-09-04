@@ -12,10 +12,14 @@ import math
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, send_file
 from flask_cors import CORS
-import threading
-import queue
 import io
 import csv
+import sys
+
+# Add server dir to path so camera_oui imports correctly
+sys.path.insert(0, os.path.dirname(__file__))
+from camera_oui import lookup_camera, get_camera_count, CAMERA_OUI_DB
+
 
 # Configuration
 RADAR_DIR = os.environ.get("RADAR_DIR", os.path.expanduser("~/radar"))
