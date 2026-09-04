@@ -351,16 +351,33 @@ main() {
     check_termux
     
     # Installation steps
+    log "${BLUE}[10%] Starting installation...${NC}"
     update_termux
+    
+    log "${BLUE}[20%] Downloading core system packages (this may take a few minutes)...${NC}"
     install_packages
+    
+    log "${BLUE}[40%] Setting up Python dependencies...${NC}"
     install_python_deps
+    
+    log "${BLUE}[50%] Setting up permissions...${NC}"
     setup_permissions
+    
+    log "${BLUE}[60%] Downloading CIVOPS-Radar code...${NC}"
     clone_repository
+    
+    log "${BLUE}[70%] Setting up directories...${NC}"
     setup_directories
+    
+    log "${BLUE}[80%] Initializing database...${NC}"
     init_database
+    
+    log "${BLUE}[90%] Creating mobile shortcuts...${NC}"
     create_mobile_scripts
     create_mobile_docs
     create_qr_code
+    
+    log "${BLUE}[100%] Installation complete!${NC}"
     
     # Show summary
     show_mobile_summary
