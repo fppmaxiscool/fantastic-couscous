@@ -120,25 +120,64 @@ cd "$RADAR_DIR"
 
 cat > start_mobile.sh << 'STARTEOF'
 #!/bin/bash
+# CIVOPS-Radar — Full Launcher
 cd "$HOME/radar"
+
 echo ""
-echo "🛰️  Starting CIVOPS-Radar..."
-echo "📱 Open your browser to: http://localhost:5000"
-echo "📊 Demo mode:            http://localhost:5000/demo"
-echo "Press Ctrl+C to stop"
+echo "  ██████╗██╗██╗   ██╗ ██████╗ ██████╗ ███████╗"
+echo "  ██╔════╝██║██║   ██║██╔═══██╗██╔══██╗██╔════╝"
+echo "  ██║     ██║██║   ██║██║   ██║██████╔╝███████╗"
+echo "  ██║     ██║╚██╗ ██╔╝██║   ██║██╔═══╝ ╚════██║"
+echo "  ╚██████╗██║ ╚████╔╝ ╚██████╔╝██║     ███████║"
+echo "   ╚═════╝╚═╝  ╚═══╝   ╚═════╝ ╚═╝     ╚══════╝"
+echo "         R A D A R  //  SIGINT  SYSTEM"
 echo ""
+
+# 1. Pull latest code
+echo "[1/4] Pulling latest code..."
+git pull origin main --quiet 2>/dev/null && echo "      ✓ Up to date" || echo "      ⚠ Could not update (offline?)"
+
+# 2. Install/verify Python deps
+echo "[2/4] Checking Python dependencies..."
 export PIP_BREAK_SYSTEM_PACKAGES=1
-python server/app.py --host 0.0.0.0 --port 5000 &
-SERVER_PID=$!
-# Start scanner only if termux-api is available
+pip install flask flask-cors requests beautifulsoup4 -q 2>/dev/null && echo "      ✓ Dependencies OK" || echo "      ⚠ Some deps missing"
+
+# 3. Start scanner (only if termux-api works)
+echo "[3/4] Starting Wi-Fi scanner..."
 if command -v termux-wifi-scaninfo &>/dev/null; then
-    ./termux/radar_prototype.sh scan &
-    SCANNER_PID=$!
-    trap 'kill $SERVER_PID $SCANNER_PID 2>/dev/null; echo "Stopped."; exit 0' INT
+    # Test if it actually responds
+    timeout 4 termux-wifi-scaninfo &>/dev/null
+    if [ $? -eq 0 ]; then
+        bash termux/radar_prototype.sh scan &>/dev/null &
+        echo "      ✓ Real scanner ACTIVE — scanning nearby networks"
+    else
+        echo "      ⚠ termux-api installed but not responding"
+        echo "        → Grant Location permission in Android Settings > Apps > Termux"
+        echo "        → Showing DEMO data in radar"
+    fi
 else
-    echo "⚠  Wi-Fi scanner not available (termux-api not installed). Web UI only."
-    trap 'kill $SERVER_PID 2>/dev/null; echo "Stopped."; exit 0' INT
+    echo "      ⚠ Termux:API not found → Install from F-Droid for real networks"
+    echo "        → Showing DEMO data in radar"
 fi
+
+# 4. Start web server
+echo "[4/4] Starting web server..."
+sleep 1
+python server/app.py --host 0.0.0.0 --port 5000 &>/dev/null &
+sleep 1
+echo "      ✓ Server started"
+
+echo ""
+echo "  ┌─────────────────────────────────────────┐"
+echo "  │  Open your browser and go to:           │"
+echo "  │                                         │"
+echo "  │     http://localhost:5000               │"
+echo "  │                                         │"
+echo "  │  Press Ctrl+C to stop everything        │"
+echo "  └─────────────────────────────────────────┘"
+echo ""
+
+trap 'echo ""; echo "Stopping CIVOPS-Radar..."; kill $(jobs -p) 2>/dev/null; exit 0' INT
 wait
 STARTEOF
 chmod +x start_mobile.sh
