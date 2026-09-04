@@ -2,751 +2,848 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CIVOPS-Radar - Wi-Fi Network Scanner</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CIVOPS-RADAR // SIGINT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            font-family: 'Courier New', monospace;
-            overflow: hidden;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --green: #00ff41;
+            --green-dim: #00cc33;
+            --green-dark: #003a0f;
+            --green-glow: rgba(0,255,65,0.4);
+            --red: #ff2244;
+            --yellow: #ffcc00;
+            --blue: #00aaff;
+            --bg: #020a02;
+            --panel: rgba(0,15,4,0.92);
+            --border: rgba(0,255,65,0.35);
         }
-        
-        .radar-container {
-            position: relative;
-            width: 100%;
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            touch-action: manipulation;
+        }
+
+        /* ── SCANLINES overlay ──────────────────────────── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.18) 2px,
+                rgba(0,0,0,0.18) 4px
+            );
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        /* ── LAYOUT ─────────────────────────────────────── */
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
             height: 100vh;
+        }
+
+        /* ── HEADER ─────────────────────────────────────── */
+        #header {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            background: var(--panel);
+        }
+        #header-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            color: var(--green);
+            text-shadow: 0 0 10px var(--green-glow);
+        }
+        #header-title span { color: var(--red); }
+        #status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            background: rgba(0,255,65,0.05);
+        }
+        #status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: blink 1.4s ease-in-out infinite;
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+        /* ── STAT BAR ───────────────────────────────────── */
+        #stat-bar {
+            flex: 0 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-bottom: 1px solid var(--border);
+            background: var(--panel);
+        }
+        .stat-cell {
+            padding: 6px 4px;
+            text-align: center;
+            border-right: 1px solid var(--border);
+        }
+        .stat-cell:last-child { border-right: none; }
+        .stat-val {
+            font-family: 'Orbitron', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .stat-lbl { font-size: 8px; letter-spacing: 1px; color: rgba(0,255,65,0.5); margin-top: 2px; }
+        .stat-val.red   { color: var(--red);    text-shadow: 0 0 8px var(--red); }
+        .stat-val.yellow{ color: var(--yellow);  text-shadow: 0 0 8px var(--yellow); }
+        .stat-val.blue  { color: var(--blue);    text-shadow: 0 0 8px var(--blue); }
+        .stat-val.green { color: var(--green);   text-shadow: 0 0 8px var(--green); }
+
+        /* ── MAIN AREA ──────────────────────────────────── */
+        #main {
+            flex: 1 1 auto;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── RADAR CANVAS AREA ──────────────────────────── */
+        #radar-wrap {
+            flex: 1 1 auto;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             overflow: hidden;
         }
-        
-        .radar-screen {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 600px;
-            height: 600px;
-            border: 2px solid #10b981;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
-            box-shadow: 
-                0 0 20px rgba(16, 185, 129, 0.3),
-                inset 0 0 20px rgba(16, 185, 129, 0.1);
+
+        #radar-canvas {
+            display: block;
+            /* size set by JS */
         }
-        
-        .radar-center {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 12px;
-            height: 12px;
-            background: #10b981;
-            border-radius: 50%;
-            box-shadow: 
-                0 0 15px #10b981,
-                0 0 30px rgba(16, 185, 129, 0.5);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); }
-            50% { transform: translate(-50%, -50%) scale(1.2); }
-        }
-        
-        .radar-sweep {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 3px;
-            height: 300px;
-            background: linear-gradient(to top, transparent, #10b981, #10b981);
-            transform-origin: bottom center;
-            animation: sweep 4s linear infinite;
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-        }
-        
-        @keyframes sweep {
-            from { transform: translate(-50%, -50%) rotate(0deg); }
-            to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        .range-ring {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            border: 1px solid rgba(16, 185, 129, 0.4);
-            border-radius: 50%;
-            animation: ringPulse 3s ease-in-out infinite;
-        }
-        
-        .range-ring:nth-child(1) { animation-delay: 0s; }
-        .range-ring:nth-child(2) { animation-delay: 1s; }
-        .range-ring:nth-child(3) { animation-delay: 2s; }
-        
-        @keyframes ringPulse {
-            0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
-            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.05); }
-        }
-        
-        .network-dot {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            cursor: pointer;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            animation: dotAppear 0.5s ease-out;
-        }
-        
-        @keyframes dotAppear {
-            from { 
-                opacity: 0; 
-                transform: translate(-50%, -50%) scale(0); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1); 
-            }
-        }
-        
-        .network-dot:hover {
-            transform: translate(-50%, -50%) scale(1.8);
-            z-index: 10;
-            animation: dotHover 0.3s ease-out;
-        }
-        
-        @keyframes dotHover {
-            0% { transform: translate(-50%, -50%) scale(1); }
-            50% { transform: translate(-50%, -50%) scale(2.2); }
-            100% { transform: translate(-50%, -50%) scale(1.8); }
-        }
-        
-        .network-dot.low-risk { 
-            background: #10b981; 
-            box-shadow: 0 0 12px #10b981, 0 0 24px rgba(16, 185, 129, 0.3);
-            animation: lowRiskPulse 3s ease-in-out infinite;
-        }
-        
-        .network-dot.medium-risk { 
-            background: #f59e0b; 
-            box-shadow: 0 0 12px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.3);
-            animation: mediumRiskPulse 2s ease-in-out infinite;
-        }
-        
-        .network-dot.high-risk { 
-            background: #ef4444; 
-            box-shadow: 0 0 12px #ef4444, 0 0 24px rgba(239, 68, 68, 0.3);
-            animation: highRiskPulse 1s ease-in-out infinite;
-        }
-        
-        @keyframes lowRiskPulse {
-            0%, 100% { opacity: 0.8; }
-            50% { opacity: 1; }
-        }
-        
-        @keyframes mediumRiskPulse {
-            0%, 100% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
-            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-        }
-        
-        @keyframes highRiskPulse {
-            0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-        }
-        
-        .network-info {
-            position: absolute;
-            background: rgba(15, 23, 42, 0.98);
-            border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 16px;
-            color: #f1f5f9;
-            font-size: 13px;
-            max-width: 220px;
-            z-index: 20;
-            display: none;
-            box-shadow: 
-                0 10px 25px rgba(0, 0, 0, 0.5),
-                0 0 20px rgba(16, 185, 129, 0.3);
-            backdrop-filter: blur(10px);
-            animation: infoSlideIn 0.3s ease-out;
-        }
-        
-        @keyframes infoSlideIn {
-            from { 
-                opacity: 0; 
-                transform: translateY(-10px) scale(0.9); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0) scale(1); 
-            }
-        }
-        
-        .stats-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 20px;
-            color: #f1f5f9;
-            min-width: 220px;
-            box-shadow: 
-                0 10px 25px rgba(0, 0, 0, 0.3),
-                0 0 20px rgba(16, 185, 129, 0.2);
-            backdrop-filter: blur(10px);
-            animation: panelSlideIn 0.5s ease-out;
-        }
-        
-        @keyframes panelSlideIn {
-            from { 
-                opacity: 0; 
-                transform: translateX(20px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateX(0); 
-            }
-        }
-        
-        .control-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 20px;
-            color: #f1f5f9;
-            box-shadow: 
-                0 10px 25px rgba(0, 0, 0, 0.3),
-                0 0 20px rgba(16, 185, 129, 0.2);
-            backdrop-filter: blur(10px);
-            animation: panelSlideIn 0.5s ease-out 0.2s both;
-        }
-        
-        .network-list {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 20px;
-            color: #f1f5f9;
-            max-height: 450px;
+
+        /* ── NETWORK LIST DRAWER ────────────────────────── */
+        #net-drawer {
+            flex: 0 0 auto;
+            max-height: 36vh;
             overflow-y: auto;
-            width: 320px;
-            box-shadow: 
-                0 10px 25px rgba(0, 0, 0, 0.3),
-                0 0 20px rgba(16, 185, 129, 0.2);
-            backdrop-filter: blur(10px);
-            animation: panelSlideIn 0.5s ease-out 0.1s both;
+            border-top: 1px solid var(--border);
+            background: var(--panel);
         }
-        
-        .network-item {
-            padding: 12px;
-            border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+        #net-drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: rgba(0,255,65,0.6);
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+            z-index: 2;
+        }
+        .net-row {
+            display: flex;
+            align-items: center;
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(0,255,65,0.1);
             cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-radius: 8px;
+            transition: background 0.15s;
+            gap: 10px;
+        }
+        .net-row:active { background: rgba(0,255,65,0.08); }
+        .net-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+        }
+        .net-dot.low    { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+        .net-dot.medium { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+        .net-dot.high   { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+        .net-name {
+            flex: 1 1 auto;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .net-name .ssid { color: var(--green); }
+        .net-name .bssid { color: rgba(0,255,65,0.35); font-size: 10px; display: block; }
+        .net-meta {
+            flex: 0 0 auto;
+            text-align: right;
+            font-size: 10px;
+        }
+        .net-meta .dbm  { color: var(--blue); }
+        .net-meta .risk { font-family: 'Orbitron', monospace; }
+        .risk-low    { color: var(--green); }
+        .risk-medium { color: var(--yellow); }
+        .risk-high   { color: var(--red); }
+
+        /* ── BOTTOM ACTION BAR ──────────────────────────── */
+        #action-bar {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            border-top: 1px solid var(--border);
+            background: var(--panel);
+        }
+        .btn {
+            flex: 1;
+            padding: 10px 6px;
+            border: 1px solid var(--border);
+            background: rgba(0,255,65,0.04);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 1px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active {
+            background: rgba(0,255,65,0.15);
+            box-shadow: 0 0 12px var(--green-glow);
+        }
+        .btn.danger { border-color: rgba(255,34,68,0.4); color: var(--red); }
+        .btn.danger:active { background: rgba(255,34,68,0.15); box-shadow: 0 0 12px rgba(255,34,68,0.4); }
+
+        /* ── NETWORK DETAIL MODAL ───────────────────────── */
+        #detail-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            align-items: flex-end;
+            justify-content: center;
+            background: rgba(0,0,0,0.7);
+        }
+        #detail-modal.open { display: flex; }
+        #detail-card {
+            background: #030f03;
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 12px 12px 0 0;
+            padding: 20px 16px 32px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 -4px 40px rgba(0,255,65,0.15);
+            animation: slideUp 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+        }
+        #detail-close {
+            position: absolute;
+            top: 12px; right: 16px;
+            background: none;
+            border: none;
+            color: rgba(0,255,65,0.5);
+            font-size: 22px;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        .detail-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 15px;
+            color: var(--green);
+            text-shadow: 0 0 10px var(--green-glow);
             margin-bottom: 4px;
         }
-        
-        .network-item:hover {
-            background: rgba(16, 185, 129, 0.15);
-            transform: translateX(5px);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        .detail-bssid { font-size: 11px; color: rgba(0,255,65,0.4); margin-bottom: 16px; }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
         }
-        
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 10px;
-            animation: statusBlink 2s ease-in-out infinite;
+        .detail-item {
+            background: rgba(0,255,65,0.05);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px;
         }
-        
-        .status-scanning { 
-            background: #10b981; 
-            box-shadow: 0 0 8px #10b981;
-        }
-        .status-stopped { 
-            background: #ef4444; 
-            box-shadow: 0 0 8px #ef4444;
-        }
-        .status-error { 
-            background: #f59e0b; 
-            box-shadow: 0 0 8px #f59e0b;
-        }
-        
-        @keyframes statusBlink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .button {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            transform: translateY(0);
-        }
-        
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
-        }
-        
-        .button:active {
-            transform: translateY(0);
-        }
-        
-        .scanning-overlay {
+        .detail-item .lbl { font-size: 9px; letter-spacing: 1.5px; color: rgba(0,255,65,0.4); margin-bottom: 4px; }
+        .detail-item .val { font-family: 'Orbitron', monospace; font-size: 14px; font-weight: 700; }
+
+        /* ── TICKER / LOG ───────────────────────────────── */
+        #ticker {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle, transparent 0%, rgba(16, 185, 129, 0.1) 100%);
+            top: 8px;
+            right: 8px;
+            width: 130px;
+            max-height: 80px;
+            overflow: hidden;
+            font-size: 9px;
+            letter-spacing: 0.5px;
+            color: rgba(0,255,65,0.4);
+            text-align: right;
             pointer-events: none;
-            animation: scanningOverlay 2s ease-in-out infinite;
         }
-        
-        @keyframes scanningOverlay {
-            0%, 100% { opacity: 0.3; }
-            50% { opacity: 0.6; }
-        }
-        
-        .signal-trail {
+        .tick-line { line-height: 1.6; }
+
+        /* ── DEMO BADGE ─────────────────────────────────── */
+        #demo-badge {
             position: absolute;
-            width: 2px;
-            height: 20px;
-            background: linear-gradient(to top, transparent, #10b981);
-            border-radius: 1px;
-            animation: trailFade 1s ease-out forwards;
+            top: 8px; left: 8px;
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: var(--yellow);
+            background: rgba(255,204,0,0.08);
+            border: 1px solid rgba(255,204,0,0.3);
+            border-radius: 4px;
+            padding: 2px 7px;
         }
-        
-        @keyframes trailFade {
-            from { opacity: 1; transform: scaleY(1); }
-            to { opacity: 0; transform: scaleY(0.3); }
+
+        /* ── LOADING ────────────────────────────────────── */
+        #loading {
+            position: fixed; inset: 0;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+            gap: 16px;
+            transition: opacity 0.5s;
         }
+        #loading.hidden { opacity: 0; pointer-events: none; }
+        #loading-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 5px;
+            text-shadow: 0 0 20px var(--green);
+        }
+        #loading-bar-wrap {
+            width: 200px;
+            height: 3px;
+            background: rgba(0,255,65,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        #loading-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            transition: width 0.3s;
+        }
+        #loading-msg { font-size: 10px; letter-spacing: 2px; color: rgba(0,255,65,0.5); }
+
+        /* scrollbar */
+        #net-drawer::-webkit-scrollbar { width: 4px; }
+        #net-drawer::-webkit-scrollbar-track { background: transparent; }
+        #net-drawer::-webkit-scrollbar-thumb { background: rgba(0,255,65,0.3); border-radius: 2px; }
     </style>
 </head>
-<body class="bg-slate-900 text-green-400">
-    <div class="radar-container">
-        <!-- Radar Screen -->
-        <div class="radar-screen" id="radarScreen">
-            <div class="radar-center"></div>
-            <div class="radar-sweep"></div>
-            
-            <!-- Range Rings -->
-            <div class="range-ring" style="width: 200px; height: 200px;"></div>
-            <div class="range-ring" style="width: 400px; height: 400px;"></div>
-            <div class="range-ring" style="width: 600px; height: 600px;"></div>
-            
-            <!-- Scanning Overlay -->
-            <div class="scanning-overlay" id="scanningOverlay" style="display: none;"></div>
-        </div>
-        
-        <!-- Network List -->
-        <div class="network-list" id="networkList">
-            <h3 class="text-lg font-bold mb-4 text-green-400">Detected Networks</h3>
-            <div id="networkItems"></div>
-        </div>
-        
-        <!-- Statistics Panel -->
-        <div class="stats-panel">
-            <h3 class="text-lg font-bold mb-4 text-green-400">Statistics</h3>
-            <div class="space-y-2">
-                <div class="flex justify-between">
-                    <span>Total Networks:</span>
-                    <span id="totalNetworks" class="text-green-400">0</span>
-                </div>
-                <div class="flex justify-between">
-                    <span>Active Networks:</span>
-                    <span id="activeNetworks" class="text-green-400">0</span>
-                </div>
-                <div class="flex justify-between">
-                    <span>High Risk:</span>
-                    <span id="highRiskNetworks" class="text-red-400">0</span>
-                </div>
-                <div class="flex justify-between">
-                    <span>Open Networks:</span>
-                    <span id="openNetworks" class="text-yellow-400">0</span>
-                </div>
-                <div class="flex justify-between">
-                    <span>Hidden Networks:</span>
-                    <span id="hiddenNetworks" class="text-blue-400">0</span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Control Panel -->
-        <div class="control-panel">
-            <h3 class="text-lg font-bold mb-4 text-green-400">Controls</h3>
-            <div class="space-y-3">
-                <button id="scanButton" class="button w-full bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-semibold">
-                    <span class="status-indicator status-scanning"></span>
-                    Start Scan
-                </button>
-                <button id="exportButton" class="button w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-semibold">
-                    Export Data
-                </button>
-                <button id="clearButton" class="button w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-semibold">
-                    Clear Data
-                </button>
-            </div>
-            <div class="mt-4 text-sm">
-                <div>Status: <span id="statusText" class="text-green-400">Ready</span></div>
-                <div>Last Update: <span id="lastUpdate" class="text-gray-400">Never</span></div>
-            </div>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading">
+    <div id="loading-title">CIVOPS</div>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <div id="loading-msg">INITIALIZING SIGINT SYSTEM...</div>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+    <!-- HEADER -->
+    <div id="header">
+        <div id="header-title">CIVOPS<span>//</span>RADAR</div>
+        <div id="status-pill">
+            <div id="status-dot"></div>
+            <span id="status-text">LIVE</span>
         </div>
     </div>
-    
-    <!-- Network Info Tooltip -->
-    <div class="network-info" id="networkInfo"></div>
 
-    <script>
-        class RadarDisplay {
-            constructor() {
-                this.radarScreen = document.getElementById('radarScreen');
-                this.networkList = document.getElementById('networkItems');
-                this.networkInfo = document.getElementById('networkInfo');
-                this.scanButton = document.getElementById('scanButton');
-                this.exportButton = document.getElementById('exportButton');
-                this.clearButton = document.getElementById('clearButton');
-                
-                this.networks = new Map();
-                this.isScanning = false;
-                this.updateInterval = null;
-                
-                this.init();
-            }
-            
-            init() {
-                this.setupEventListeners();
-                this.startAutoUpdate();
-                this.updateStatistics();
-            }
-            
-            setupEventListeners() {
-                this.scanButton.addEventListener('click', () => this.toggleScan());
-                this.exportButton.addEventListener('click', () => this.exportData());
-                this.clearButton.addEventListener('click', () => this.clearData());
-            }
-            
-            async toggleScan() {
-                if (this.isScanning) {
-                    await this.stopScan();
-                } else {
-                    await this.startScan();
-                }
-            }
-            
-            async startScan() {
-                try {
-                    const response = await fetch('/api/scan/start');
-                    const data = await response.json();
-                    
-                    if (data.status === 'scan_started') {
-                        this.isScanning = true;
-                        this.scanButton.innerHTML = '<span class="status-indicator status-scanning"></span>Stop Scan';
-                        this.updateStatus('Scanning...');
-                        this.showScanningOverlay();
-                        this.createSignalTrails();
-                    }
-                } catch (error) {
-                    console.error('Failed to start scan:', error);
-                    this.updateStatus('Error starting scan');
-                }
-            }
-            
-            async stopScan() {
-                try {
-                    const response = await fetch('/api/scan/stop');
-                    const data = await response.json();
-                    
-                    if (data.status === 'scan_stopped') {
-                        this.isScanning = false;
-                        this.scanButton.innerHTML = '<span class="status-indicator status-stopped"></span>Start Scan';
-                        this.updateStatus('Stopped');
-                        this.hideScanningOverlay();
-                    }
-                } catch (error) {
-                    console.error('Failed to stop scan:', error);
-                    this.updateStatus('Error stopping scan');
-                }
-            }
-            
-            async exportData() {
-                try {
-                    const response = await fetch('/api/export/json');
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `radar_export_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
-                        this.updateStatus('Data exported');
-                    }
-                } catch (error) {
-                    console.error('Export failed:', error);
-                    this.updateStatus('Export failed');
-                }
-            }
-            
-            async clearData() {
-                if (confirm('Are you sure you want to clear all scan data?')) {
-                    this.networks.clear();
-                    this.updateRadarDisplay();
-                    this.updateNetworkList();
-                    this.updateStatus('Data cleared');
-                }
-            }
-            
-            startAutoUpdate() {
-                this.updateInterval = setInterval(() => {
-                    this.updateSignals();
-                    this.updateStatistics();
-                }, 3000);
-            }
-            
-            async updateSignals() {
-                try {
-                    const response = await fetch('/api/signals');
-                    const data = await response.json();
-                    
-                    if (data.signals) {
-                        this.processSignals(data.signals);
-                        this.updateRadarDisplay();
-                        this.updateNetworkList();
-                        this.updateLastUpdate(data.timestamp);
-                    }
-                } catch (error) {
-                    console.error('Failed to update signals:', error);
-                }
-            }
-            
-            processSignals(signals) {
-                signals.forEach(signal => {
-                    this.networks.set(signal.bssid, signal);
-                });
-            }
-            
-            updateRadarDisplay() {
-                // Clear existing network dots
-                const existingDots = this.radarScreen.querySelectorAll('.network-dot');
-                existingDots.forEach(dot => dot.remove());
-                
-                // Add network dots
-                this.networks.forEach((network, bssid) => {
-                    const dot = this.createNetworkDot(network);
-                    this.radarScreen.appendChild(dot);
-                });
-            }
-            
-            createNetworkDot(network) {
-                return this.createNetworkDotWithAnimation(network);
-            }
-            
-            showNetworkInfo(network, event) {
-                const info = this.networkInfo;
-                info.innerHTML = `
-                    <div class="font-bold text-green-400">${network.ssid}</div>
-                    <div class="text-xs text-gray-400">${network.bssid}</div>
-                    <div class="mt-2 space-y-1">
-                        <div>Signal: ${network.level} dBm</div>
-                        <div>Distance: ${network.distance.toFixed(1)}m</div>
-                        <div>Risk: ${network.risk_score}/100</div>
-                        <div>Security: ${network.capabilities || 'Unknown'}</div>
-                        <div>Frequency: ${network.frequency} MHz</div>
-                        <div>Scans: ${network.scan_count}</div>
-                    </div>
-                `;
-                
-                info.style.left = `${event.pageX + 10}px`;
-                info.style.top = `${event.pageY - 10}px`;
-                info.style.display = 'block';
-                
-                // Hide info after 5 seconds
-                setTimeout(() => {
-                    info.style.display = 'none';
-                }, 5000);
-            }
-            
-            updateNetworkList() {
-                const networks = Array.from(this.networks.values())
-                    .sort((a, b) => b.risk_score - a.risk_score);
-                
-                this.networkList.innerHTML = networks.map(network => `
-                    <div class="network-item" data-bssid="${network.bssid}">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-bold">${network.ssid || 'Hidden'}</div>
-                                <div class="text-xs text-gray-400">${network.bssid}</div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-sm">${network.level} dBm</div>
-                                <div class="text-xs ${network.risk_score > 70 ? 'text-red-400' : network.risk_score > 30 ? 'text-yellow-400' : 'text-green-400'}">
-                                    Risk: ${network.risk_score}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-                
-                // Add click events to network items
-                this.networkList.querySelectorAll('.network-item').forEach(item => {
-                    item.addEventListener('click', () => {
-                        const bssid = item.dataset.bssid;
-                        const network = this.networks.get(bssid);
-                        if (network) {
-                            // Highlight corresponding dot on radar
-                            const dot = this.radarScreen.querySelector(`[data-bssid="${bssid}"]`);
-                            if (dot) {
-                                dot.style.transform = 'translate(-50%, -50%) scale(2)';
-                                setTimeout(() => {
-                                    dot.style.transform = 'translate(-50%, -50%) scale(1)';
-                                }, 1000);
-                            }
-                        }
-                    });
-                });
-            }
-            
-            async updateStatistics() {
-                try {
-                    const response = await fetch('/api/statistics');
-                    const stats = await response.json();
-                    
-                    document.getElementById('totalNetworks').textContent = stats.total_networks || 0;
-                    document.getElementById('activeNetworks').textContent = stats.active_networks || 0;
-                    document.getElementById('highRiskNetworks').textContent = stats.high_risk_networks || 0;
-                    document.getElementById('openNetworks').textContent = stats.open_networks || 0;
-                    document.getElementById('hiddenNetworks').textContent = stats.hidden_networks || 0;
-                } catch (error) {
-                    console.error('Failed to update statistics:', error);
-                }
-            }
-            
-            updateStatus(message) {
-                document.getElementById('statusText').textContent = message;
-            }
-            
-            updateLastUpdate(timestamp) {
-                const date = new Date(timestamp);
-                document.getElementById('lastUpdate').textContent = date.toLocaleTimeString();
-            }
-            
-            showScanningOverlay() {
-                const overlay = document.getElementById('scanningOverlay');
-                overlay.style.display = 'block';
-            }
-            
-            hideScanningOverlay() {
-                const overlay = document.getElementById('scanningOverlay');
-                overlay.style.display = 'none';
-            }
-            
-            createSignalTrails() {
-                if (!this.isScanning) return;
-                
-                // Create random signal trails
-                const radarScreen = this.radarScreen;
-                const centerX = 300;
-                const centerY = 300;
-                
-                for (let i = 0; i < 3; i++) {
-                    setTimeout(() => {
-                        const trail = document.createElement('div');
-                        trail.className = 'signal-trail';
-                        
-                        // Random position around radar
-                        const angle = Math.random() * 2 * Math.PI;
-                        const distance = 100 + Math.random() * 200;
-                        const x = centerX + Math.cos(angle) * distance;
-                        const y = centerY + Math.sin(angle) * distance;
-                        
-                        trail.style.left = `${x}px`;
-                        trail.style.top = `${y}px`;
-                        trail.style.transform = `rotate(${angle * 180 / Math.PI}deg)`;
-                        
-                        radarScreen.appendChild(trail);
-                        
-                        // Remove trail after animation
-                        setTimeout(() => {
-                            if (trail.parentNode) {
-                                trail.parentNode.removeChild(trail);
-                            }
-                        }, 1000);
-                    }, i * 200);
-                }
-                
-                // Continue creating trails while scanning
-                if (this.isScanning) {
-                    setTimeout(() => this.createSignalTrails(), 2000);
-                }
-            }
-            
-            createNetworkDotWithAnimation(network) {
-                const dot = document.createElement('div');
-                dot.className = 'network-dot';
-                dot.setAttribute('data-bssid', network.bssid);
-                
-                // Determine risk level
-                let riskClass = 'low-risk';
-                if (network.risk_score > 70) riskClass = 'high-risk';
-                else if (network.risk_score > 30) riskClass = 'medium-risk';
-                
-                dot.classList.add(riskClass);
-                
-                // Position on radar
-                const centerX = 300;
-                const centerY = 300;
-                const x = centerX + (network.position.x * 300);
-                const y = centerY + (network.position.y * 300);
-                
-                dot.style.left = `${x}px`;
-                dot.style.top = `${y}px`;
-                
-                // Add click event for network info
-                dot.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.showNetworkInfo(network, e);
-                });
-                
-                // Add hover effects
-                dot.addEventListener('mouseenter', () => {
-                    dot.style.transform = 'translate(-50%, -50%) scale(1.8)';
-                });
-                
-                dot.addEventListener('mouseleave', () => {
-                    dot.style.transform = 'translate(-50%, -50%) scale(1)';
-                });
-                
-                return dot;
-            }
+    <!-- STAT BAR -->
+    <div id="stat-bar">
+        <div class="stat-cell">
+            <div class="stat-val green" id="s-total">0</div>
+            <div class="stat-lbl">TOTAL</div>
+        </div>
+        <div class="stat-cell">
+            <div class="stat-val blue" id="s-active">0</div>
+            <div class="stat-lbl">ACTIVE</div>
+        </div>
+        <div class="stat-cell">
+            <div class="stat-val yellow" id="s-open">0</div>
+            <div class="stat-lbl">OPEN</div>
+        </div>
+        <div class="stat-cell">
+            <div class="stat-val red" id="s-risk">0</div>
+            <div class="stat-lbl">HIGH RISK</div>
+        </div>
+    </div>
+
+    <!-- MAIN -->
+    <div id="main">
+        <div id="radar-wrap">
+            <canvas id="radar-canvas"></canvas>
+            <div id="demo-badge" style="display:none">◉ DEMO DATA</div>
+            <div id="ticker"></div>
+        </div>
+
+        <!-- NETWORK LIST -->
+        <div id="net-drawer">
+            <div id="net-drawer-header">
+                <span>◈ DETECTED NETWORKS</span>
+                <span id="net-count">0 TARGETS</span>
+            </div>
+            <div id="net-list"></div>
+        </div>
+    </div>
+
+    <!-- ACTION BAR -->
+    <div id="action-bar">
+        <button class="btn" id="btn-scan" onclick="toggleScan()">⬡ SCAN</button>
+        <button class="btn" id="btn-export" onclick="exportData()">⬇ EXPORT</button>
+        <button class="btn danger" id="btn-clear" onclick="clearData()">✕ CLEAR</button>
+    </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="detail-modal" onclick="if(event.target===this)closeDetail()">
+    <div id="detail-card">
+        <button id="detail-close" onclick="closeDetail()">✕</button>
+        <div class="detail-title" id="d-ssid"></div>
+        <div class="detail-bssid" id="d-bssid"></div>
+        <div class="detail-grid" id="d-grid"></div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CIVOPS-RADAR  –  Mobile UI v2
+// ═══════════════════════════════════════════════════════════
+
+const canvas  = document.getElementById('radar-canvas');
+const ctx     = canvas.getContext('2d');
+let   networks = new Map();
+let   sweepAngle = 0;
+let   animId;
+let   scanning = false;
+let   demoMode = false;
+let   tickLines = [];
+let   selectedBSSID = null;
+
+// ── LOADING BOOT SEQUENCE ───────────────────────────────────
+const loadBar = document.getElementById('loading-bar');
+const loadMsg = document.getElementById('loading-msg');
+const msgs = [
+    'LOADING SIGINT ENGINE...',
+    'CALIBRATING RF MODULES...',
+    'ESTABLISHING DB LINK...',
+    'READY.'
+];
+let li = 0;
+const bootInt = setInterval(() => {
+    li++;
+    loadBar.style.width = (li / msgs.length * 100) + '%';
+    loadMsg.textContent = msgs[li] || msgs[msgs.length-1];
+    if (li >= msgs.length) {
+        clearInterval(bootInt);
+        setTimeout(() => {
+            document.getElementById('loading').classList.add('hidden');
+            startApp();
+        }, 400);
+    }
+}, 500);
+
+// ── CANVAS SIZING ───────────────────────────────────────────
+function resizeCanvas() {
+    const wrap = document.getElementById('radar-wrap');
+    const size = Math.min(wrap.clientWidth, wrap.clientHeight) - 8;
+    canvas.width  = size;
+    canvas.height = size;
+}
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// ── RADAR DRAW ──────────────────────────────────────────────
+function drawRadar() {
+    const W = canvas.width, H = canvas.height;
+    const cx = W/2, cy = H/2;
+    const R  = W/2 - 4;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // background
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+    bg.addColorStop(0,   'rgba(0,30,8,0.9)');
+    bg.addColorStop(0.7, 'rgba(0,15,4,0.95)');
+    bg.addColorStop(1,   'rgba(0,5,2,1)');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.fill();
+
+    // range rings
+    [0.25, 0.5, 0.75, 1].forEach((f, i) => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * f, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(0,255,65,${0.12 + i*0.04})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (f < 1) {
+            ctx.fillStyle = 'rgba(0,255,65,0.2)';
+            ctx.font = '8px Share Tech Mono';
+            ctx.fillText(`${Math.round(f*200)}m`, cx + R*f + 3, cy - 3);
         }
-        
-        // Initialize radar display when page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            new RadarDisplay();
+    });
+
+    // crosshairs
+    ctx.strokeStyle = 'rgba(0,255,65,0.12)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(cx, cy-R); ctx.lineTo(cx, cy+R); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-R, cy); ctx.lineTo(cx+R, cy); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // diagonal crosshairs
+    ctx.strokeStyle = 'rgba(0,255,65,0.06)';
+    [-45, 45, 135, 225].forEach(deg => {
+        const a = deg * Math.PI/180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a)*R, cy + Math.sin(a)*R);
+        ctx.stroke();
+    });
+
+    // sweep gradient trail
+    const sweep = ctx.createConicalGradient
+        ? null  // not widely supported; use arc instead
+        : null;
+
+    // Draw sweep as a filled arc sector (trail effect)
+    for (let t = 0; t < 60; t++) {
+        const a = sweepAngle - t * 0.018;
+        const alpha = (1 - t/60) * 0.18;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, R, a - 0.018, a);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(0,255,65,${alpha})`;
+        ctx.fill();
+    }
+
+    // sweep line
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweepAngle)*R, cy + Math.sin(sweepAngle)*R);
+    ctx.strokeStyle = 'rgba(0,255,65,0.9)';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#00ff41';
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // center dot
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#00ff41';
+    ctx.shadowColor = '#00ff41';
+    ctx.shadowBlur = 12 * pulse;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // outer border
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,255,65,0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // network blips
+    networks.forEach(net => {
+        const x = cx + net.position.x * R * 0.88;
+        const y = cy + net.position.y * R * 0.88;
+
+        let color = '#00ff41';
+        if (net.risk_score > 70) color = '#ff2244';
+        else if (net.risk_score > 30) color = '#ffcc00';
+
+        const r = net.bssid === selectedBSSID ? 9 : 6;
+        const glow = 6 + 4 * Math.sin(Date.now()/600 + net._phase);
+
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = glow;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // ring around selected
+        if (net.bssid === selectedBSSID) {
+            ctx.beginPath();
+            ctx.arc(x, y, 14, 0, Math.PI*2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // label
+        if (networks.size < 20) {
+            ctx.fillStyle = 'rgba(0,255,65,0.7)';
+            ctx.font = '9px Share Tech Mono';
+            ctx.fillText(net.ssid || '???', x + 10, y + 3);
+        }
+    });
+
+    sweepAngle += 0.025;
+
+    animId = requestAnimationFrame(drawRadar);
+}
+
+// ── PROCESS SIGNALS ─────────────────────────────────────────
+function processSignals(signals) {
+    signals.forEach(sig => {
+        const ex = networks.get(sig.bssid) || {};
+        sig._phase = ex._phase ?? (Math.random() * Math.PI * 2);
+        networks.set(sig.bssid, sig);
+    });
+    renderNetworkList();
+    updateStats();
+}
+
+// ── NETWORK LIST ────────────────────────────────────────────
+function renderNetworkList() {
+    const list = document.getElementById('net-list');
+    const sorted = [...networks.values()].sort((a,b) => b.risk_score - a.risk_score);
+    document.getElementById('net-count').textContent = sorted.length + ' TARGETS';
+
+    list.innerHTML = sorted.map(n => {
+        const risk = n.risk_score > 70 ? 'high' : n.risk_score > 30 ? 'medium' : 'low';
+        const riskLabel = n.risk_score > 70 ? 'HIGH' : n.risk_score > 30 ? 'MED' : 'LOW';
+        const sel = n.bssid === selectedBSSID ? 'style="background:rgba(0,255,65,0.08)"' : '';
+        return `<div class="net-row" ${sel} onclick="showDetail('${n.bssid}')">
+            <div class="net-dot ${risk}"></div>
+            <div class="net-name">
+                <span class="ssid">${n.ssid || '[ HIDDEN ]'}</span>
+                <span class="bssid">${n.bssid}</span>
+            </div>
+            <div class="net-meta">
+                <div class="dbm">${n.level} dBm</div>
+                <div class="risk risk-${risk}">${riskLabel}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── STATS ────────────────────────────────────────────────────
+function updateStats() {
+    const arr = [...networks.values()];
+    document.getElementById('s-total').textContent  = arr.length;
+    document.getElementById('s-active').textContent = arr.filter(n => n.active !== false).length;
+    document.getElementById('s-open').textContent   = arr.filter(n => n.is_open).length;
+    document.getElementById('s-risk').textContent   = arr.filter(n => n.risk_score > 70).length;
+}
+
+// ── DETAIL MODAL ─────────────────────────────────────────────
+function showDetail(bssid) {
+    const n = networks.get(bssid);
+    if (!n) return;
+    selectedBSSID = bssid;
+    renderNetworkList();
+
+    document.getElementById('d-ssid').textContent  = n.ssid || '[ HIDDEN NETWORK ]';
+    document.getElementById('d-bssid').textContent = n.bssid;
+
+    const risk = n.risk_score > 70 ? '#ff2244' : n.risk_score > 30 ? '#ffcc00' : '#00ff41';
+    const sec  = n.capabilities
+        ? (n.capabilities.includes('WPA3') ? 'WPA3' : n.capabilities.includes('WPA2') ? 'WPA2' : n.capabilities.includes('WPA') ? 'WPA' : n.capabilities.includes('WEP') ? 'WEP' : 'OPEN')
+        : (n.is_open ? 'OPEN' : 'SECURE');
+
+    document.getElementById('d-grid').innerHTML = `
+        <div class="detail-item"><div class="lbl">SIGNAL</div><div class="val" style="color:#00aaff">${n.level} dBm</div></div>
+        <div class="detail-item"><div class="lbl">RISK SCORE</div><div class="val" style="color:${risk}">${n.risk_score}/100</div></div>
+        <div class="detail-item"><div class="lbl">DISTANCE</div><div class="val">${n.distance ? n.distance.toFixed(0)+'m' : '???'}</div></div>
+        <div class="detail-item"><div class="lbl">SECURITY</div><div class="val" style="color:${n.is_open?'#ffcc00':'#00ff41'}">${sec}</div></div>
+        <div class="detail-item"><div class="lbl">FREQUENCY</div><div class="val">${n.frequency ? n.frequency+'MHz' : '—'}</div></div>
+        <div class="detail-item"><div class="lbl">SEEN</div><div class="val" style="font-size:11px">${n.scan_count ?? 1}x</div></div>
+    `;
+    document.getElementById('detail-modal').classList.add('open');
+}
+function closeDetail() {
+    selectedBSSID = null;
+    document.getElementById('detail-modal').classList.remove('open');
+    renderNetworkList();
+}
+
+// ── TICKER LOG ────────────────────────────────────────────────
+function tick(msg) {
+    const now = new Date().toLocaleTimeString('en', {hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    tickLines.unshift(`[${now}] ${msg}`);
+    if (tickLines.length > 5) tickLines.pop();
+    document.getElementById('ticker').innerHTML = tickLines.map(l => `<div class="tick-line">${l}</div>`).join('');
+}
+
+// ── DEMO DATA ─────────────────────────────────────────────────
+function generateDemoData() {
+    demoMode = true;
+    document.getElementById('demo-badge').style.display = 'block';
+    tick('NO SCANNER — DEMO MODE ACTIVE');
+
+    const ssids = ['HomeNetwork_5G','NETGEAR42','AndroidAP','[HIDDEN]','Starbucks_WiFi','ATT-Router','xfinitywifi','DIRECT-TV8','TP-LINK_3F4A','Google_Fiber'];
+    const caps  = ['[WPA2-PSK]','[WPA3]','[WPA-PSK][WPA2-PSK]','[WEP]','[ESS]','[WPA2-PSK]','[ESS]','[WPA2]','[WPA-PSK]','[WPA3]'];
+
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
+        const dist  = 0.2 + Math.random() * 0.75;
+        const level = -40 - Math.round(dist * 60);
+        const cap   = caps[i % caps.length];
+        const isOpen = cap.includes('ESS') && !cap.includes('WPA');
+        const isHid  = ssids[i] === '[HIDDEN]';
+        const risk   = (isOpen ? 30 : 0) + (isHid ? 20 : 0) + (level < -80 ? 10 : 0);
+
+        const bssid = Array.from({length:6}, () => Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join(':');
+
+        networks.set(bssid, {
+            bssid,
+            ssid: isHid ? '' : ssids[i % ssids.length],
+            level,
+            distance: dist * 200,
+            risk_score: Math.min(100, risk + Math.floor(Math.random()*15)),
+            is_open: isOpen,
+            is_hidden: isHid,
+            capabilities: cap,
+            frequency: Math.random() > 0.4 ? 2412 + Math.floor(Math.random()*5)*5 : 5180,
+            scan_count: Math.floor(Math.random()*20)+1,
+            position: { x: Math.cos(angle)*dist, y: Math.sin(angle)*dist },
+            _phase: Math.random() * Math.PI * 2,
         });
-        
-        // Hide network info when clicking elsewhere
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.network-dot') && !e.target.closest('.network-info')) {
-                document.getElementById('networkInfo').style.display = 'none';
+    }
+    renderNetworkList();
+    updateStats();
+    tick('DEMO: ' + networks.size + ' SIMULATED TARGETS LOADED');
+}
+
+// ── LIVE DATA FETCH ───────────────────────────────────────────
+async function fetchSignals() {
+    try {
+        const r = await fetch('/api/signals');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        if (d.signals && d.signals.length > 0) {
+            if (demoMode) { networks.clear(); demoMode = false; document.getElementById('demo-badge').style.display='none'; }
+            processSignals(d.signals);
+            tick('REFRESH: ' + d.signals.length + ' SIGNALS');
+        } else if (!demoMode) {
+            generateDemoData();
+        }
+    } catch(e) {
+        if (!demoMode) generateDemoData();
+    }
+}
+
+async function fetchStats() {
+    try {
+        const r = await fetch('/api/statistics');
+        if (!r.ok) return;
+        const s = await r.json();
+        if (!demoMode) {
+            document.getElementById('s-total').textContent  = s.total_networks  || 0;
+            document.getElementById('s-active').textContent = s.active_networks  || 0;
+            document.getElementById('s-open').textContent   = s.open_networks    || 0;
+            document.getElementById('s-risk').textContent   = s.high_risk_networks || 0;
+        }
+    } catch(e) {}
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────
+function toggleScan() {
+    scanning = !scanning;
+    const btn = document.getElementById('btn-scan');
+    if (scanning) {
+        btn.textContent = '⬡ STOP';
+        tick('SCAN INITIATED');
+        fetch('/api/scan/start').catch(()=>{});
+    } else {
+        btn.textContent = '⬡ SCAN';
+        tick('SCAN HALTED');
+        fetch('/api/scan/stop').catch(()=>{});
+    }
+}
+
+function exportData() {
+    tick('EXPORT TRIGGERED...');
+    fetch('/api/export/json')
+        .then(r => r.ok ? r.blob() : Promise.reject())
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'civops_' + Date.now() + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            tick('EXPORT COMPLETE');
+        })
+        .catch(() => {
+            // fallback: export demo data
+            if (demoMode) {
+                const blob = new Blob([JSON.stringify([...networks.values()], null, 2)], {type:'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'civops_demo_' + Date.now() + '.json';
+                a.click();
+                tick('DEMO EXPORT COMPLETE');
+            } else {
+                tick('EXPORT FAILED');
             }
         });
-    </script>
+}
+
+function clearData() {
+    if (!confirm('PURGE ALL SCAN DATA?')) return;
+    networks.clear();
+    demoMode = false;
+    document.getElementById('demo-badge').style.display = 'none';
+    renderNetworkList();
+    updateStats();
+    tick('DATABASE PURGED');
+}
+
+// ── START APP ─────────────────────────────────────────────────
+function startApp() {
+    resizeCanvas();
+    drawRadar();
+    fetchSignals();
+    setInterval(fetchSignals, 5000);
+    setInterval(fetchStats,   10000);
+    tick('CIVOPS-RADAR ONLINE');
+    tick('AWAITING SCAN DATA...');
+}
+</script>
 </body>
 </html>
