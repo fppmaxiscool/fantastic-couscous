@@ -68,7 +68,7 @@ install_packages() {
     info "Installing required packages..."
     
     # Core packages
-    pkg install -y python python-pip sqlite git curl wget jq
+    pkg install -y python python-pip sqlite git curl wget jq python-numpy python-pandas
     
     # Termux:API for Wi-Fi scanning
     pkg install -y termux-api
@@ -87,10 +87,13 @@ install_python_deps() {
     
     # Install from requirements.txt if available
     if [[ -f "requirements.txt" ]]; then
+        # Remove pandas and numpy from requirements so they aren't built from source
+        sed -i '/pandas/d' requirements.txt
+        sed -i '/numpy/d' requirements.txt
         pip install -r requirements.txt
     else
-        # Install core dependencies
-        pip install flask flask-cors pandas numpy requests beautifulsoup4
+        # Install core dependencies (excluding pandas and numpy as they are installed via pkg)
+        pip install flask flask-cors requests beautifulsoup4
     fi
     
     success "Python dependencies installed"
