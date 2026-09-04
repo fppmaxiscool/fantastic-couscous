@@ -15,6 +15,7 @@ from flask_cors import CORS
 import io
 import csv
 import sys
+import queue
 
 # Add server dir to path so camera_oui imports correctly
 sys.path.insert(0, os.path.dirname(__file__))
